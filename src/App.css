@@ -1,0 +1,118 @@
+.dashboard-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.dashboard-header {
+  margin-bottom: 24px;
+}
+
+.dashboard-header h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.04em;
+  color: var(--spotify-white);
+}
+
+.dashboard-header p {
+  color: var(--spotify-gray-text);
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.grid-top {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.grid-middle {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.card {
+  background-color: var(--spotify-gray-base);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05); /* Soft premium shadow */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  transition: background-color 0.3s, transform 0.2s;
+}
+
+.card:hover {
+  background-color: var(--spotify-gray-hover);
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--spotify-white);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 0;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #EEEEEE;
+  padding-bottom: 12px;
+}
+
+.chart-container {
+  height: 400px;
+  width: 100%;
+}
+
+.grid-top .chart-container {
+  height: 550px;
+}
+
+/* Song Table Styles */
+.song-table-container {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.song-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.song-table th {
+  text-align: left;
+  color: var(--spotify-gray-text);
+  font-weight: 400;
+  padding: 8px;
+  border-bottom: 1px solid #EEEEEE;
+  position: sticky;
+  top: 0;
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(4px);
+}
+
+.song-table td {
+  padding: 12px 8px;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.song-table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+.song-title {
+  color: var(--spotify-white);
+  font-weight: 600;
+}
+
+.song-artist {
+  color: var(--spotify-gray-text);
+  font-size: 12px;
+}
