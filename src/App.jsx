@@ -104,6 +104,7 @@ function App() {
           radarName={radarName}
           indicatorNames={data.radar_features}
           featureMaxes={data.featureMaxes}
+          scatterData={data.scatter}
           onNodeClick={(node) => setSelectedGenre(node)} 
           onNodeHover={(node) => setSelectedGenre(node)}
         />

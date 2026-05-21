@@ -18,7 +18,7 @@ const RIBBON_R = 68.1818; // inner arc radius in polar units
 const ANIM_DURATION = 550; // ms
 const ANIM_SOFT = 0.18;   // soft edge width for sweep
 
-const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarName, indicatorNames, featureMaxes, onNodeHover, onNodeClick }) => {
+const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarName, indicatorNames, featureMaxes, scatterData, onNodeHover, onNodeClick }) => {
   const [hoveredCategory, setHoveredCategory] = useState(null);
 
   // ECharts instance ref – for direct imperative updates during animation
@@ -29,14 +29,115 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
   const ribbonBaseRef = useRef([]);
   const rafRef        = useRef(null);
 
+  // States for dynamic representative song covers
+  const [repSong, setRepSong] = useState(null);
+  const [coverUrl, setCoverUrl] = useState('');
+  const [isLoadingCover, setIsLoadingCover] = useState(false);
+  const cacheRef = useRef({}); // Cache object to store { 'Title - Artist': 'CoverURL' }
+
   const i18n = {
     danceability:'可舞度', energy:'能量', acousticness:'声学度', valence:'愉悦度',
     liveness:'现场感', instrumentalness:'器乐度', speechiness:'言语度'
   };
 
   // ─────────────────────────────────────────────────────────────────────────
-  // LEFT CHART OPTION  (no animProgress dependency → only re-runs when
-  // hoveredCategory / data actually change, NOT on every animation frame)
+  // REPRESENTATIVE SONG EXTRACTION
+  // ─────────────────────────────────────────────────────────────────────────
+  const getRepresentativeSong = (genreName) => {
+    if (!scatterData || !genreName) return null;
+
+    // Normalize genre name: remove line breaks, spaces, convert to lowercase
+    const cleanGenre = genreName.replace(/\n/g, ' ').toLowerCase().trim();
+
+    // Filter scatter songs belonging to this genre or sub-genre
+    const matchedSongs = scatterData.filter(song => {
+      const songGenre = String(song[4] || '').replace(/\n/g, ' ').toLowerCase().trim();
+      return (
+        songGenre === cleanGenre ||
+        songGenre.includes(cleanGenre) ||
+        cleanGenre.includes(songGenre)
+      );
+    });
+
+    if (matchedSongs.length === 0) return null;
+
+    // Sort songs by popularity [5] descending
+    const sorted = [...matchedSongs].sort((a, b) => (b[5] || 0) - (a[5] || 0));
+    const topSong = sorted[0];
+
+    return {
+      title: topSong[2],
+      artist: topSong[3],
+      genre: topSong[4],
+      popularity: topSong[5]
+    };
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // COVER ARTWORK FETCHING (iTunes Search API - anonymous, free, CORS-friendly)
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!hoveredCategory) {
+      // Fade out background and song info slightly delayed for smooth transition
+      const timer = setTimeout(() => {
+        setRepSong(null);
+        setCoverUrl('');
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+
+    const song = getRepresentativeSong(hoveredCategory);
+    if (!song) {
+      setRepSong(null);
+      setCoverUrl('');
+      return;
+    }
+
+    setRepSong(song);
+
+    const cacheKey = `${song.title}-${song.artist}`;
+    if (cacheRef.current[cacheKey]) {
+      setCoverUrl(cacheRef.current[cacheKey]);
+      return;
+    }
+
+    // Debounce API requests (300ms) to avoid request flooding on fast sweep
+    const debounceTimer = setTimeout(() => {
+      setIsLoadingCover(true);
+      const query = encodeURIComponent(`${song.title} ${song.artist}`);
+      const url = `https://itunes.apple.com/search?term=${query}&limit=1&entity=song`;
+
+      fetch(url)
+        .then(res => res.json())
+        .then(resData => {
+          if (resData.results && resData.results.length > 0) {
+            const track = resData.results[0];
+            // Swap 100x100 artwork with 600x600 for high resolution aesthetic
+            const highResUrl = track.artworkUrl100 ? track.artworkUrl100.replace('100x100bb.jpg', '600x600bb.jpg') : '';
+            if (highResUrl) {
+              cacheRef.current[cacheKey] = highResUrl;
+              setCoverUrl(highResUrl);
+            } else {
+              setCoverUrl('');
+            }
+          } else {
+            setCoverUrl('');
+          }
+        })
+        .catch(err => {
+          console.error("Failed to fetch artwork from iTunes API:", err);
+          setCoverUrl('');
+        })
+        .finally(() => {
+          setIsLoadingCover(false);
+        });
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [hoveredCategory, scatterData]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // LEFT CHART OPTION
   // ─────────────────────────────────────────────────────────────────────────
   const chordOptions = useMemo(() => {
     if (!graphData || !sunburstData) return {};
@@ -67,7 +168,7 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
       (rootCat?.children || []).forEach(c => validNames.add(c.name));
 
       const links = graphData.links.filter(l =>
-        validNames.has(l.source) // 只取从当前节点**主动**发出的连线（有向图逻辑）
+        validNames.has(l.source) // Only links starting FROM current hovered category
       );
 
       highlightNames = new Set(validNames);
@@ -89,31 +190,28 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
       const offsets = {};
       const newColorInfo = [];
       ribbonData = links.map((l, idx) => {
-        // Source side geometry (evenly divide arc width)
+        // Source side geometry
         const [ss, se] = angleRanges[l.source] || [0,1];
         const so = offsets[l.source] || 0;
         const aw = (1 / (linkCounts[l.source] || 1)) * (se - ss);
         offsets[l.source] = so + aw;
         const srcStart = ss + so, srcEnd = srcStart + aw;
 
-        // Target side geometry (evenly divide arc width)
+        // Target side geometry
         const [ts, te] = angleRanges[l.target] || [0,1];
         const to2 = offsets[l.target] || 0;
         const bw  = (1 / (linkCounts[l.target] || 1)) * (te - ts);
         offsets[l.target] = to2 + bw;
         const tgtStart = ts + to2, tgtEnd = tgtStart + bw;
 
-        // Normalize similarity to opacity (from 0.25 to 0.85)
         const normSim = (l.value - minSim) / simRange;
         const targetOpacity = 0.25 + normSim * 0.6;
 
-        // Color direction (always start FROM hovered category)
         let srcColor = catColors[l.source] || '#FF8E8B';
         const tgtColor = catColors[l.target] || '#FF8E8B';
         const isSourceStart = validNames.has(l.source);
 
         const altColors = ['#A2CBE6', '#F3D291', '#F1A5B4'];
-        // 将原本的大类颜色与蓝/黄/粉进行融合 (0.75 表示 75% 的蓝/黄/粉 + 25% 的原本大类颜色)
         srcColor = _blendHex(srcColor, altColors[idx % 3], 0.75);
 
         newColorInfo.push({
@@ -123,21 +221,17 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
           targetOpacity
         });
 
-        // value[0-3] = arc geometry, value[4] = animation progress (0 initially)
         const item = { value: [srcStart, srcEnd, tgtStart, tgtEnd, 0], itemStyle: { opacity: targetOpacity } };
         return item;
       });
 
-      // Write color info for RAF and renderItem to read
       colorInfoRef.current  = newColorInfo;
-      // Cache geometry for RAF (avoids getOption() every frame)
       ribbonBaseRef.current = ribbonData.map(d => d.value.slice(0, 4));
     } else {
       colorInfoRef.current  = [];
-      ribbonBaseRef.current = []; // Clear immediately so stale RAF frames don't re-draw
+      ribbonBaseRef.current = [];
     }
 
-    // Sunburst opacity logic
     const isSmall = hoveredCategory && !!nodeCatMap[hoveredCategory];
     const getOp = (name, isRoot) => {
       if (!hoveredCategory) return 1;
@@ -160,7 +254,6 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
         backgroundColor: 'rgba(255,255,255,0.95)', borderColor: '#EEEEEE',
         textStyle: { color: '#333333', fontFamily: '"Outfit","Inter",sans-serif' },
         position: function (point, params, dom, rect, size) {
-          // size.viewSize 是图表容器的宽高，size.contentSize 是提示框的宽高
           const viewWidth = size.viewSize[0];
           const viewHeight = size.viewSize[1];
           const cx = viewWidth / 2;
@@ -168,13 +261,11 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
           
           const [mx, my] = point;
           const [tw, th] = size.contentSize;
-          const offset = 15; // 距离鼠标的偏移量
+          const offset = 15;
 
-          // 朝向圆心的反方向：根据鼠标所在象限，把提示框向外推
           let x = mx > cx ? mx + offset : mx - tw - offset;
           let y = my > cy ? my + offset : my - th - offset;
 
-          // 边缘防溢出保护，防止提示框被截断
           if (x < 0) x = 0;
           if (x + tw > viewWidth) x = viewWidth - tw;
           if (y < 0) y = 0;
@@ -187,11 +278,10 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
       angleAxis:  { type:'value', startAngle:90, clockwise:true, min:0, max:totalValue, show:false },
       radiusAxis: { type:'value', min:0, max:100, show:false },
       series: [
-        // ── Layer 1: Sunburst SECTORS only (colored fills, NO labels) ──
         {
           name: '流派层级关系', type: 'sunburst',
           data: activeSunburst, sort: null, radius: ['38%','88%'],
-          nodeClick: false, // 禁用默认的点击下钻放大行为
+          nodeClick: false,
           tooltip: { formatter: '<span style="font-weight:bold;">{b}</span><br/><span style="color:#666;font-size:12px;">曲库样本规模：{c} 首</span>' },
           emphasis: { focus: 'none' },
           itemStyle: { borderRadius:4, borderWidth:2, borderColor:'#FFFFFF' },
@@ -203,12 +293,10 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
           ],
           z: 2
         },
-        // ── Layer 2: Ribbon chords (between sector fills and text) ──
         {
           id: 'ribbon-custom',
           name: '特征相似度弦带', type: 'custom', silent: true,
           coordinateSystem: 'polar',
-          // renderItem: reads value[0-4] for geometry+progress, reads colorInfoRef for colors
           renderItem: (params, api) => {
             const center = api.coord([0,0]);
             const edgeP  = api.coord([RIBBON_R, 0]);
@@ -218,7 +306,7 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
             const p2 = api.coord([RIBBON_R, api.value(1)]);
             const p3 = api.coord([RIBBON_R, api.value(2)]);
             const p4 = api.coord([RIBBON_R, api.value(3)]);
-            const t  = api.value(4); // animation progress 0→1
+            const t  = api.value(4);
 
             const info        = colorInfoRef.current[params.dataIndex] || {};
             const fromColor   = info.fromColor || '#A8D8B9';
@@ -242,10 +330,8 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
 
             const style = api.style();
             style.fill    = { type:'linear', x:fx, y:fy, x2:tx, y2:ty, global:true, colorStops };
-            // Use the similarity-based opacity
             style.opacity = info.targetOpacity !== undefined ? info.targetOpacity : 0.75;
             
-            // 增加一点白色描边，让相邻或重叠的弦能够被物理分割开，增加区分度
             style.stroke = 'rgba(255, 255, 255, 0.4)';
             style.lineWidth = 1.5;
 
@@ -258,12 +344,11 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
           data: ribbonData,
           z: 5
         },
-        // ── Layer 3: Sunburst LABELS only (transparent sectors, text on top) ──
         {
           name: '流派文字标签', type: 'sunburst',
           data: activeSunburst, sort: null, radius: ['38%','88%'],
           nodeClick: false,
-          silent: true,  // Don't intercept mouse — Layer 1 handles interaction
+          silent: true,
           tooltip: { show: false },
           emphasis: { focus: 'none' },
           itemStyle: { color: 'transparent', borderColor: 'transparent', borderWidth: 0, opacity: 0 },
@@ -277,10 +362,10 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
         }
       ]
     };
-  }, [sunburstData, graphData, hoveredCategory]); // ← NO animProgress in deps!
+  }, [sunburstData, graphData, hoveredCategory]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // RAF ANIMATION – directly patches ECharts instance, zero React re-renders
+  // RAF ANIMATION
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -291,13 +376,11 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
     const tick = (ts) => {
       if (!startTime) startTime = ts;
       const raw = Math.min((ts - startTime) / ANIM_DURATION, 1);
-      // easeInOutQuad: smooth start + smooth end, no lingering deceleration tail
       const t = raw < 0.5 ? 2 * raw * raw : 1 - (-2 * raw + 2) ** 2 / 2;
 
       const ec = echartsRef.current?.getEchartsInstance?.();
-      const base = ribbonBaseRef.current; // ← read from ref, NEVER call getOption()
+      const base = ribbonBaseRef.current;
       if (ec && base.length > 0) {
-        // Build new data array directly from cached geometry + current t
         const newData = base.map((geo, i) => {
           const op = colorInfoRef.current[i]?.targetOpacity || 0.75;
           return {
@@ -314,7 +397,6 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      // Immediately flush empty ribbons so no ghost frames linger on canvas
       const ec = echartsRef.current?.getEchartsInstance?.();
       if (ec) ec.setOption({ series: [{ id: 'ribbon-custom', data: [] }] });
     };
@@ -326,7 +408,6 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
   const radarOptions = useMemo(() => {
     if (!radarFeatures || !indicatorNames?.length) return {};
     
-    // 建立小类到大类的映射，方便图例显示
     const nodeCatMap = {};
     if (graphData?.nodes) {
       graphData.nodes.forEach(n => { nodeCatMap[n.name] = n.category; });
@@ -340,7 +421,6 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
       mainSeriesName = `${currentName} (${catClean})`;
     }
 
-    // 主特征数据（当前选择/悬停的流派）
     const radarSeriesData = [{ 
       value: indicatorNames.map(k => radarFeatures[k] || 0), 
       name: mainSeriesName, 
@@ -349,16 +429,13 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
       itemStyle: {color:'#88B04B'} 
     }];
 
-    // 如果悬停的是一个小类，则提取它发出的 3 条相似弦的目标流派，一并绘制
     if (hoveredCategory && graphData?.links && graphData?.nodes) {
       const isSubcategory = graphData.nodes.some(n => n.name === hoveredCategory);
       if (isSubcategory) {
-        // 取出主动发出的连线，并按照相关性 (value) 从大到小排序
         const outLinks = graphData.links
           .filter(l => l.source === hoveredCategory)
           .sort((a, b) => b.value - a.value);
 
-        // 按照相关性递减，颜色顺序：浅蓝 -> 淡黄 -> 粉红；透明度递减：1.0 -> 0.6 -> 0.3
         const altColors = ['#A2CBE6', '#F3D291', '#F1A5B4'];
         const opacities = [1.0, 0.6, 0.3];
 
@@ -371,8 +448,8 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
             radarSeriesData.push({
               value: indicatorNames.map(k => targetNode.features[k] || 0),
               name: `${l.target} (${catName})`,
-              areaStyle: { color: 'transparent' }, // 相似流派不填充面积
-              lineStyle: { width: 2, type: 'dashed', color, opacity }, // 虚线及透明度
+              areaStyle: { color: 'transparent' },
+              lineStyle: { width: 2, type: 'dashed', color, opacity },
               itemStyle: { color, opacity }
             });
           }
@@ -384,7 +461,7 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
       tooltip: { trigger:'item', backgroundColor:'rgba(255,255,255,0.95)', borderColor:'#A8D8B9', textStyle:{color:'#333333',fontFamily:'"Outfit","Inter",sans-serif'} },
       legend: { show: true, top: '75%', icon: 'circle', textStyle: { fontSize: 12, fontFamily: '"Outfit","Inter",sans-serif', color: '#555' } },
       radar: {
-        center:['50%','46%'], radius:'60%', // 稍微上移并缩小一点，给底部的图例留出空间
+        center:['50%','46%'], radius:'60%',
         indicator: indicatorNames.map(n => ({ name: i18n[n] || n, max: featureMaxes?.[n] ? featureMaxes[n]*1.05 : 1 })),
         splitNumber: 4,
         axisName:  { color:'#555555', fontWeight:'bold', fontSize:12, borderRadius:3, padding:[3,6], backgroundColor:'rgba(255,255,255,0.85)' },
@@ -406,29 +483,166 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
   };
 
   return (
-    <div className="chart-container" style={{ display:'flex', height:'800px', width:'100%' }}>
-      {/* Left: Sunburst + Chord Ribbons */}
-      <div style={{ flex:'0 0 60%', height:'100%' }}>
-        <ReactECharts
-          ref={echartsRef}
-          key="chord-sunburst"
-          option={chordOptions}
-          style={{ height:'100%', width:'100%' }}
-          onEvents={chordEvents}
-        />
+    <div 
+      className="chart-container" 
+      style={{ 
+        display:'flex', 
+        height:'800px', 
+        width:'100%', 
+        position: 'relative', 
+        overflow: 'hidden',
+        borderRadius: '16px',
+        background: '#FFFFFF',
+        transition: 'all 0.5s ease-in-out'
+      }}
+    >
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
+      {/* 背景超模糊霓虹氛围层 (Ambient Glow) */}
+      <div 
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundImage: coverUrl ? `url(${coverUrl})` : 'none',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          filter: 'blur(55px) saturate(180%)',
+          opacity: coverUrl ? 0.14 : 0,
+          transition: 'background-image 0.8s ease-in-out, opacity 0.8s ease-in-out',
+          zIndex: 0,
+          pointerEvents: 'none'
+        }}
+      />
+
+      {/* 主体图表区域，置于背景层之上 */}
+      <div style={{ display: 'flex', height: '100%', width: '100%', zIndex: 1, position: 'relative' }}>
+        {/* Left: Sunburst + Chord Ribbons */}
+        <div style={{ flex:'0 0 60%', height:'100%' }}>
+          <ReactECharts
+            ref={echartsRef}
+            key="chord-sunburst"
+            option={chordOptions}
+            style={{ height:'100%', width:'100%' }}
+            onEvents={chordEvents}
+          />
+        </div>
+
+        {/* Right: Radar */}
+        <div style={{ flex:'0 0 40%', height:'100%', display:'flex', flexDirection:'column', justifyContent:'center' }}>
+          {radarFeatures ? (
+            <ReactECharts option={radarOptions} style={{ height:'100%', width:'100%' }} />
+          ) : (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#AAAAAA', fontSize:'14px', flexDirection:'column', gap:'12px' }}>
+              <div style={{ fontSize:'48px', opacity:0.3 }}>🎵</div>
+              <span>悬停旭日图节点，查看流派特征七维 analysis</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Right: Radar */}
-      <div style={{ flex:'0 0 40%', height:'100%', display:'flex', flexDirection:'column', justifyContent:'center' }}>
-        {radarFeatures ? (
-          <ReactECharts option={radarOptions} style={{ height:'100%', width:'100%' }} />
-        ) : (
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#AAAAAA', fontSize:'14px', flexDirection:'column', gap:'12px' }}>
-            <div style={{ fontSize:'48px', opacity:0.3 }}>🎵</div>
-            <span>悬停旭日图节点，查看流派特征七维分析</span>
+      {/* 优雅磨砂玻璃黑胶悬浮唱片代表歌曲名片 */}
+      {repSong && coverUrl && (
+        <div 
+          style={{
+            position: 'absolute',
+            bottom: '24px',
+            left: '24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            padding: '12px 18px',
+            background: 'rgba(255, 255, 255, 0.45)',
+            backdropFilter: 'blur(20px) saturate(120%)',
+            WebkitBackdropFilter: 'blur(20px) saturate(120%)',
+            border: '1px solid rgba(255, 255, 255, 0.45)',
+            borderRadius: '16px',
+            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.08)',
+            maxWidth: '320px',
+            transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+            opacity: coverUrl ? 1 : 0,
+            transform: coverUrl ? 'translateY(0) scale(1)' : 'translateY(15px) scale(0.95)',
+            zIndex: 10,
+            pointerEvents: 'none' // Avoid obstructing mouse hover events on ECharts
+          }}
+        >
+          {/* 旋转黑胶唱片外观 */}
+          <div style={{ position: 'relative', width: '56px', height: '56px', flexShrink: 0 }}>
+            <img 
+              src={coverUrl} 
+              alt="Album Cover" 
+              style={{
+                width: '100%',
+                height: '100%',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '2px solid rgba(255, 255, 255, 0.8)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                animation: 'spin 12s linear infinite'
+              }}
+            />
+            <div 
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                background: '#FFFFFF',
+                border: '1px solid rgba(0,0,0,0.1)'
+              }}
+            />
           </div>
-        )}
-      </div>
+
+          {/* 歌曲详情 */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', overflow: 'hidden' }}>
+            <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#88B04B', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              🔥 流派代表作
+            </div>
+            <div 
+              style={{ 
+                fontSize: '13px', 
+                fontWeight: '700', 
+                color: '#222222', 
+                whiteSpace: 'nowrap', 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis',
+                fontFamily: '"Outfit", "Inter", sans-serif'
+              }}
+            >
+              {repSong.title}
+            </div>
+            <div 
+              style={{ 
+                fontSize: '11px', 
+                color: '#555555', 
+                whiteSpace: 'nowrap', 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis',
+                fontFamily: '"Outfit", "Inter", sans-serif'
+              }}
+            >
+              {repSong.artist}
+            </div>
+            {/* 流行度进度条 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+              <div style={{ width: '80px', height: '4px', background: 'rgba(0,0,0,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
+                <div style={{ width: `${repSong.popularity}%`, height: '100%', background: 'linear-gradient(90deg, #A8D8B9, #88B04B)', borderRadius: '2px' }} />
+              </div>
+              <span style={{ fontSize: '9px', color: '#777777', fontWeight: '600' }}>Pop: {Math.round(repSong.popularity)}%</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
