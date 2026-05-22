@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import ReactECharts from 'echarts-for-react';
 
 const englishToChineseMap = {
@@ -41,8 +41,8 @@ const englishToChineseMap = {
   "Decade": "十年", "Season": "季节", "Weather": "天气", "Climate": "气候", "Nature": "自然",
   "Universe": "宇宙", "Cosmos": "宇宙空间", "Galaxy": "星系", "Planet": "行星", "Asteroid": "小行星",
   "Comet": "彗星", "Meteor": "流星", "Earthquake": "地震", "Volcano": "火山", "Flood": "洪水",
-  "Drought": "干旱", "Fire": "火灾", "Smoke": "烟雾", "Fog": "浓雾", "Mist": "薄雾", "Dew": "露水",
-  "Frost": "严霜", "Ice": "冰霜", "Snow": "白雪", "Rain": "雨水", "Cloud": "浮云", "Sky": "天空",
+  "Drought": "干旱", "Smoke": "烟雾", "Fog": "浓雾", "Mist": "薄雾", "Dew": "露水",
+  "Frost": "严霜", "Ice": "冰霜", "Snow": "白雪", "Cloud": "浮云", "Sky": "天空",
   "Air": "空气", "Wind": "微风", "Dust": "尘埃", "Dirt": "泥土", "Mud": "烂泥", "Clay": "粘土",
   "Sand": "细沙", "Stone": "石头", "Pebble": "鹅卵石", "Gravel": "砾石", "Soil": "土壤",
   "Land": "陆地", "Mountain": "山脉", "Hill": "小山", "Valley": "山谷", "Canyon": "峡谷", "Cliff": "悬崖",
@@ -50,14 +50,24 @@ const englishToChineseMap = {
   "Meadow": "草地", "Swamp": "沼泽", "Marsh": "湿地", "Island": "岛屿", "Peninsula": "半岛", "Cape": "海角",
   "Bay": "海湾", "Gulf": "海湾", "Harbor": "港口", "Port": "港口", "Shore": "海岸", "Coast": "海岸",
   "Beach": "沙滩", "Spring": "泉水", "Well": "井水", "Waterfall": "瀑布", "Geyser": "喷泉", "Glacier": "冰川",
-  "Iceberg": "冰山", "One": "一", "Two": "二", "Three": "三", "Four": "四", "Five": "五", "Sex": "性",
-  "Drug": "药", "Girls": "女孩们", "Boys": "男孩们", "Nights": "黑夜", "Days": "白昼", "World": "世界",
+  "Iceberg": "冰山", "Sex": "性",
+  "Drug": "药", "Girls": "女孩们", "Boys": "男孩们", "Nights": "黑夜", "Days": "白昼",
   "Worlds": "世界", "Christmas": "圣诞", "Green": "绿色", "Yellow": "黄色", "Purple": "紫色",
-  "Pink": "粉色", "Orange": "橙色", "Brown": "棕色", "Gray": "灰色", "Silver": "银色", "Gold": "金色",
-  "Bronze": "青铜", "Copper": "红铜", "Iron": "黑铁", "Steel": "精钢", "Metal": "金属", "Bones": "风骨"
+  "Pink": "粉色", "Orange": "橙色", "Brown": "棕色", "Gray": "灰色", "Silver": "银色",
+  "Bronze": "青铜", "Copper": "红铜", "Iron": "黑铁", "Steel": "精钢", "Metal": "金属"
 };
 
-const TimelineChart = ({ data }) => {
+// KMeans 聚类颜色（与 ScatterBrushChart 完全一致）
+const clusterColors = ['#A8D8B9', '#B4A6CD', '#A2CBE6', '#F1A5B4', '#DDE29F'];
+const clusterLabels = [
+  { label: '狂热释放', color: '#A8D8B9' },
+  { label: '轻松愉快', color: '#B4A6CD' },
+  { label: '伤感静谧', color: '#A2CBE6' },
+  { label: '阳光活力', color: '#F1A5B4' },
+  { label: '迷幻张力', color: '#DDE29F' }
+];
+
+const TimelineChart = ({ data, scatterData }) => {
 
   if (!data || data.length === 0) return null;
 
@@ -84,34 +94,118 @@ const TimelineChart = ({ data }) => {
     return matchedKey ? englishToChineseMap[matchedKey] : null;
   };
 
-  // 13个年代从左到右的高亮霓虹色谱
-  const decadeColors = [
-    '#2E86DE', // 1960-1964: 经典克莱因蓝
-    '#00B894', // 1965-1969: 复古薄荷绿
-    '#10AC84', // 1970-1974: 翡翠松石绿
-    '#00CEC9', // 1975-1979: 电光湖水蓝
-    '#5F27CD', // 1980-1984: 绚丽迪斯科紫
-    '#8395A7', // 1985-1989: 典雅太空灰
-    '#EE5A24', // 1990-1994: 狂放珊瑚橙
-    '#EA2027', // 1995-1999: 激情烈焰红
-    '#FFC312', // 2000-2004: 数字暖阳黄
-    '#C4E538', // 2005-2009: 灵动萤草绿
-    '#0652DD', // 2010-2014: 浩瀚深海蓝
-    '#12CBC4', // 2015-2019: 梦幻极光青
-    '#FDA7DF'  // 2020-2024: 青春蔷薇粉
-  ];
+  // 构建英文词 -> 主要聚类颜色的映射表
+  // 遍历 scatter 中所有歌曲标题，统计每个英文单词在各聚类中出现的次数
+  const wordClusterMap = useMemo(() => {
+    const map = {}; // { lowerWord: { 0: count, 1: count, ... } }
+    if (!scatterData) return map;
 
-  // 整合并计算所有年代的数据节点
+    // 获取翻译表中所有英文词（小写）
+    const dictWords = new Set(Object.keys(englishToChineseMap).map(k => k.toLowerCase()));
+
+    scatterData.forEach(song => {
+      const title = song[2]; // 歌曲标题
+      const cluster = song[5]; // 聚类索引
+      if (!title || cluster === undefined) return;
+
+      // 从歌曲标题中提取英文单词
+      const words = title.toLowerCase().replace(/[^a-zA-Z\s]/g, ' ').split(/\s+/);
+      const seen = new Set(); // 同一首歌同一个词只计一次
+      words.forEach(w => {
+        if (w && dictWords.has(w) && !seen.has(w)) {
+          seen.add(w);
+          if (!map[w]) map[w] = {};
+          map[w][cluster] = (map[w][cluster] || 0) + 1;
+        }
+      });
+    });
+
+    return map;
+  }, [scatterData]);
+
+  // 将 hex 颜色解析为 RGB
+  const hexToRgb = (hex) => {
+    hex = hex.replace('#', '');
+    return {
+      r: parseInt(hex.substring(0, 2), 16),
+      g: parseInt(hex.substring(2, 4), 16),
+      b: parseInt(hex.substring(4, 6), 16)
+    };
+  };
+
+  // RGB -> HSL
+  const rgbToHsl = (r, g, b) => {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+    if (max === min) { h = s = 0; }
+    else {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+        case g: h = ((b - r) / d + 2) / 6; break;
+        case b: h = ((r - g) / d + 4) / 6; break;
+      }
+    }
+    return { h, s, l };
+  };
+
+  // HSL -> hex
+  const hslToHex = (h, s, l) => {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    let r, g, b;
+    if (s === 0) { r = g = b = l; }
+    else {
+      const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+      const p = 2 * l - q;
+      r = hue2rgb(p, q, h + 1/3);
+      g = hue2rgb(p, q, h);
+      b = hue2rgb(p, q, h - 1/3);
+    }
+    const toHex = (v) => Math.round(v * 255).toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  };
+
+  // 根据词的聚类统计，按各聚类占比加权混合颜色
+  // 混合后在 HSL 空间提升饱和度，防止多色混合变灰
+  const getWordColor = (englishWord) => {
+    const lower = englishWord.toLowerCase();
+    const stats = wordClusterMap[lower];
+    if (!stats) return '#95A5A6';
+
+    const total = Object.values(stats).reduce((a, b) => a + b, 0);
+    if (total === 0) return '#95A5A6';
+
+    let r = 0, g = 0, b = 0;
+    Object.entries(stats).forEach(([cluster, count]) => {
+      const weight = count / total;
+      const rgb = hexToRgb(clusterColors[parseInt(cluster)] || '#95A5A6');
+      r += rgb.r * weight;
+      g += rgb.g * weight;
+      b += rgb.b * weight;
+    });
+
+    // 转 HSL，强制提升饱和度、控制亮度，保持鲜艳
+    const hsl = rgbToHsl(Math.round(r), Math.round(g), Math.round(b));
+    hsl.s = Math.max(hsl.s, 0.45); // 饱和度不低于 45%
+    hsl.l = Math.min(hsl.l, 0.72); // 亮度不超过 72%
+    hsl.l = Math.max(hsl.l, 0.55); // 亮度不低于 55%
+    return hslToHex(hsl.h, hsl.s, hsl.l);
+  };
+
+  // 整合并计算所有年代的数据节点（仅热词，不含歌手）
   const allNodes = [];
   const decadeLabels = data.map(d => d.label);
 
   data.forEach((decadeData, decadeIndex) => {
-    // 筛选前 4 名歌手
-    const filteredArtists = decadeData.artists
-      .filter(item => !isNoiseWord(item.name))
-      .slice(0, 4);
-
-    // 筛选前 4 名热词（具备翻译对照）
+    // 仅筛选热词（具备翻译对照）
     const translatedWords = [];
     decadeData.words.forEach(item => {
       if (!isNoiseWord(item.name)) {
@@ -124,33 +218,28 @@ const TimelineChart = ({ data }) => {
         }
       }
     });
-    const filteredWords = translatedWords.slice(0, 4);
+    const filteredWords = translatedWords.slice(0, 8);
 
-    // 合并为 8 个节点，交错分布
-    const mergedList = [
-      ...filteredArtists.map(a => ({ name: `🎙️ ${a.name}`, value: a.value, isArtist: true })),
-      ...filteredWords.map(w => ({ name: `🎵 ${w.translatedName}`, value: w.value, isArtist: false }))
-    ];
+    // 纵坐标位置分配 (Y 轴在 0 - 100 之间分出 8 个高度，避免重叠)
+    const yOffsets = [8, 20, 32, 44, 56, 68, 80, 92];
 
-    // 精准纵坐标位置分配 (Y 轴在 0 - 100 之间分出 8 个高度，完美避免重叠)
-    const yOffsets = [12, 24, 36, 48, 60, 72, 84, 96];
-
-    // 气泡大小自适应映射 (50px - 82px)
-    const values = mergedList.map(item => item.value);
+    // 气泡大小自适应映射 (45px - 78px)
+    const values = filteredWords.map(item => item.value);
     const maxVal = values.length > 0 ? Math.max(...values) : 1;
     const minVal = values.length > 0 ? Math.min(...values) : 1;
     const valRange = maxVal - minVal || 1;
 
-    mergedList.forEach((item, itemIndex) => {
+    filteredWords.forEach((item, itemIndex) => {
       const ratio = (item.value - minVal) / valRange;
-      const size = Math.round(50 + ratio * 32);
+      const size = Math.round(45 + ratio * 33);
+      const color = getWordColor(item.name);
 
       allNodes.push({
-        // 二维直角坐标数据：[X轴分类索引, Y轴高低坐标, 热度频次]
         value: [decadeIndex, yOffsets[itemIndex], item.value],
-        name: item.name,
+        name: `🎵 ${item.translatedName}`,
+        originalWord: item.name,
         symbolSize: size,
-        isArtist: item.isArtist,
+        clusterColor: color,
         decadeLabel: decadeData.label
       });
     });
@@ -158,7 +247,7 @@ const TimelineChart = ({ data }) => {
 
   const option = {
     backgroundColor: 'transparent',
-    tooltip: { show: false }, // 彻底关停 Tooltip 以实现 100% 静态展示
+    tooltip: { show: false },
     grid: {
       left: '3%',
       right: '3%',
@@ -178,8 +267,8 @@ const TimelineChart = ({ data }) => {
         fontWeight: 'bold',
         margin: 16,
         fontFamily: 'monospace',
-        interval: 0, // 确保 13 个年代全部显式渲染
-        rotate: 15   // 轻微斜置防拥挤
+        interval: 0,
+        rotate: 15
       },
       splitLine: {
         show: true,
@@ -192,7 +281,7 @@ const TimelineChart = ({ data }) => {
     yAxis: {
       type: 'value',
       min: 0,
-      max: 106,
+      max: 100,
       axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: { show: false },
@@ -205,8 +294,7 @@ const TimelineChart = ({ data }) => {
         symbol: 'circle',
         itemStyle: {
           color: function (params) {
-            const xIndex = params.data.value[0];
-            return decadeColors[xIndex % decadeColors.length];
+            return params.data.clusterColor;
           },
           borderColor: '#FFFFFF',
           borderWidth: 2,
@@ -227,7 +315,7 @@ const TimelineChart = ({ data }) => {
           textBorderWidth: 2,
           fontFamily: 'Outfit, Inter, system-ui, sans-serif'
         },
-        silent: true // 屏蔽鼠标捕获与 Hover 特效，确保完全静态且极度流畅
+        silent: true
       }
     ]
   };
@@ -237,16 +325,19 @@ const TimelineChart = ({ data }) => {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(0,0,0,0.06)', paddingBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h3 style={{ margin: 0, fontSize: '18px', color: '#212B36', fontWeight: '800', letterSpacing: '-0.02em' }}>
-            🪐 年代文化时空长廊 (1960 - 2024 流行歌手与汉化歌名热词流)
+            🪐 年代文化时空长廊 (1960 - 2024 汉化歌名热词流)
           </h3>
           <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#637381' }}>
-            🎨 60年音乐浪潮一次性尽收眼底：🎙️ 代表年代活跃歌手，🎵 代表歌曲名字里的流行热词。从左到右气泡颜色自适应形成唯美霓虹历史光谱流！
+            🎨 60年音乐浪潮尽收眼底：🎵 代表歌曲名字里的流行热词，气泡颜色由该词所属歌曲在 KMeans 5大聚类中的分布加权混合而成。
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div style={{ background: 'rgba(0, 168, 150, 0.08)', color: '#008274', border: '1px solid rgba(0, 168, 150, 0.25)', borderRadius: '50px', padding: '5px 15px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: '800' }}>
-            <span>🎨 纯粹视觉全景展卷</span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {clusterLabels.map((item, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#637381', fontWeight: '700' }}>
+              <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '50%', backgroundColor: item.color, border: '1px solid rgba(0,0,0,0.08)' }}></span>
+              <span>{item.label}</span>
+            </div>
+          ))}
         </div>
       </div>
       <div style={{ flexGrow: 1, width: '100%', position: 'relative', minHeight: '380px', backgroundColor: 'rgba(255, 255, 255, 0.35)', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.6)', overflow: 'hidden' }}>

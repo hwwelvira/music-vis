@@ -3,8 +3,7 @@ import './App.css';
 import ScatterBrushChart from './components/ScatterBrushChart';
 import SongTable from './components/SongTable';
 import ToggleableChordRadar from './components/ToggleableChordRadar';
-import TimelineChart from './components/TimelineChart';
-import AcousticEvolutionChart from './components/AcousticEvolutionChart';
+import TimelineEvolutionCombined from './components/TimelineEvolutionCombined';
 
 function App() {
   const [data, setData] = useState(null);
@@ -133,13 +132,12 @@ function App() {
           />
         </div>
       </div>
-      <div className="card" style={{ marginTop: '24px', marginBottom: '24px' }}>
-        <h2 className="card-title">流行音乐文化时代缩影 (年代代表歌手与热词词云)</h2>
-        <TimelineChart data={data.timeline_words} />
-      </div>
-
-      <div style={{ marginBottom: '24px' }}>
-        <AcousticEvolutionChart data={data.timeline} />
+      <div style={{ marginTop: '24px', marginBottom: '24px' }}>
+        <TimelineEvolutionCombined 
+          timelineData={data.timeline} 
+          wordsData={data.timeline_words} 
+          scatterData={data.scatter} 
+        />
       </div>
 
     </div>

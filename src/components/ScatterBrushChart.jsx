@@ -8,11 +8,11 @@ const ScatterBrushChart = ({ data, onBrush, selectedSong }) => {
   const clusterColors = ['#A8D8B9', '#B4A6CD', '#A2CBE6', '#F1A5B4', '#DDE29F'];
 
   const legendItems = [
-    { label: '愤怒释放', color: '#A8D8B9' },    // Cluster 0
-    { label: '安静惬意', color: '#B4A6CD' },    // Cluster 1
-    { label: '忧郁沉静', color: '#A2CBE6' },    // Cluster 2
-    { label: '激情四射', color: '#F1A5B4' },    // Cluster 3
-    { label: '流行大众', color: '#DDE29F' }     // Cluster 4
+    { label: '狂热释放', color: '#A8D8B9' },    // Cluster 0: 高能量+中愉悦
+    { label: '轻松愉快', color: '#B4A6CD' },    // Cluster 1: 中能量+高愉悦
+    { label: '伤感静谧', color: '#A2CBE6' },    // Cluster 2: 低能量+低愉悦
+    { label: '阳光活力', color: '#F1A5B4' },    // Cluster 3: 高能量+高愉悦
+    { label: '迷幻张力', color: '#DDE29F' }     // Cluster 4: 中能量+低愉悦
   ];
 
   const options = {
