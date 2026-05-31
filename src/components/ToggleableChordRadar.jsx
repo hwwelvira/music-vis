@@ -18,8 +18,24 @@ const RIBBON_R = 68.1818; // inner arc radius in polar units
 const ANIM_DURATION = 550; // ms
 const ANIM_SOFT = 0.18;   // soft edge width for sweep
 
-const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarName, indicatorNames, featureMaxes, scatterData, onNodeHover, onNodeClick }) => {
-  const [hoveredCategory, setHoveredCategory] = useState(null);
+const ToggleableChordRadar = ({ 
+  sunburstData, 
+  graphData, 
+  radarFeatures, 
+  radarName, 
+  indicatorNames, 
+  featureMaxes, 
+  scatterData, 
+  onNodeHover, 
+  onNodeClick, 
+  isVertical = false,
+  viewMode = 'both',
+  hoveredCategory: externalHoveredCategory,
+  setHoveredCategory: externalSetHoveredCategory
+}) => {
+  const [localHoveredCategory, setLocalHoveredCategory] = useState(null);
+  const hoveredCategory = externalHoveredCategory !== undefined ? externalHoveredCategory : localHoveredCategory;
+  const setHoveredCategory = externalSetHoveredCategory !== undefined ? externalSetHoveredCategory : setLocalHoveredCategory;
 
   // ECharts instance ref – for direct imperative updates during animation
   const echartsRef    = useRef(null);
@@ -339,13 +355,13 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
           return [x, y];
         }
       },
-      polar:      { center: ['50%','50%'], radius: '88%' },
+      polar:      { center: ['50%','50%'], radius: viewMode === 'sunburst' ? '92%' : (isVertical ? '76%' : '88%') },
       angleAxis:  { type:'value', startAngle:90, clockwise:true, min:0, max:totalValue, show:false },
       radiusAxis: { type:'value', min:0, max:100, show:false },
       series: [
         {
           name: '流派层级关系', type: 'sunburst',
-          data: activeSunburst, sort: null, radius: ['38%','88%'],
+          data: activeSunburst, sort: null, radius: viewMode === 'sunburst' ? ['38%', '92%'] : (isVertical ? ['30%', '76%'] : ['38%','88%']),
           nodeClick: false,
           tooltip: { formatter: '<span style="font-weight:bold;">{b}</span><br/><span style="color:#666;font-size:12px;">曲库样本规模：{c} 首</span>' },
           emphasis: { focus: 'none' },
@@ -353,8 +369,8 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
           label: { show: false },
           levels: [
             {},
-            { r0:'38%', r:'60%', itemStyle:{borderWidth:2} },
-            { r0:'60%', r:'92%', itemStyle:{borderWidth:1} }
+            { r0: viewMode === 'sunburst' ? '38%' : (isVertical ? '30%' : '38%'), r: viewMode === 'sunburst' ? '62%' : (isVertical ? '50%' : '60%'), itemStyle:{borderWidth:2} },
+            { r0: viewMode === 'sunburst' ? '62%' : (isVertical ? '50%' : '60%'), r: viewMode === 'sunburst' ? '94%' : (isVertical ? '78%' : '92%'), itemStyle:{borderWidth:1} }
           ],
           z: 2
         },
@@ -411,7 +427,7 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
         },
         {
           name: '流派文字标签', type: 'sunburst',
-          data: activeSunburst, sort: null, radius: ['38%','88%'],
+          data: activeSunburst, sort: null, radius: viewMode === 'sunburst' ? ['38%', '92%'] : (isVertical ? ['30%', '76%'] : ['38%','88%']),
           nodeClick: false,
           silent: true,
           tooltip: { show: false },
@@ -420,8 +436,8 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
           label: { show:true, color:'#333333', textBorderColor:'rgba(255,255,255,0.7)', textBorderWidth:2, fontFamily:'"Outfit","Inter",sans-serif', lineHeight:16 },
           levels: [
             {},
-            { r0:'38%', r:'60%', itemStyle:{color:'transparent',borderColor:'transparent'}, label:{rotate:'tangential',fontSize:12,fontWeight:'bold'} },
-            { r0:'60%', r:'92%', itemStyle:{color:'transparent',borderColor:'transparent'}, label:{position:'inside',fontSize:10,minAngle:3} }
+            { r0: viewMode === 'sunburst' ? '38%' : (isVertical ? '30%' : '38%'), r: viewMode === 'sunburst' ? '62%' : (isVertical ? '50%' : '60%'), itemStyle:{color:'transparent',borderColor:'transparent'}, label:{rotate:'tangential',fontSize: viewMode === 'sunburst' ? 12 : (isVertical ? 9 : 12),fontWeight:'bold'} },
+            { r0: viewMode === 'sunburst' ? '62%' : (isVertical ? '50%' : '60%'), r: viewMode === 'sunburst' ? '94%' : (isVertical ? '78%' : '92%'), itemStyle:{color:'transparent',borderColor:'transparent'}, label:{position:'inside',fontSize: viewMode === 'sunburst' ? 10 : (isVertical ? 8 : 10),minAngle:3} }
           ],
           z: 10
         }
@@ -489,6 +505,8 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
     const radarSeriesData = [{ 
       value: indicatorNames.map(k => radarFeatures[k] || 0), 
       name: mainSeriesName, 
+      symbol: 'circle',
+      symbolSize: (viewMode === 'radar' || isVertical) ? 4 : 6,
       areaStyle: {color:'rgba(168,216,185,0.45)'}, 
       lineStyle: {width:3,color:'#88B04B'}, 
       itemStyle: {color:'#88B04B'} 
@@ -513,6 +531,8 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
             radarSeriesData.push({
               value: indicatorNames.map(k => targetNode.features[k] || 0),
               name: `${l.target} (${catName})`,
+              symbol: 'circle',
+              symbolSize: (viewMode === 'radar' || isVertical) ? 3 : 5,
               areaStyle: { color: 'transparent' },
               lineStyle: { width: 2, type: 'dashed', color, opacity },
               itemStyle: { color, opacity }
@@ -524,18 +544,29 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
 
     return {
       tooltip: { trigger:'item', backgroundColor:'rgba(255,255,255,0.95)', borderColor:'#A8D8B9', textStyle:{color:'#333333',fontFamily:'"Outfit","Inter",sans-serif'} },
-      legend: { show: true, top: '75%', icon: 'circle', textStyle: { fontSize: 12, fontFamily: '"Outfit","Inter",sans-serif', color: '#555' } },
+      legend: { 
+        show: true, 
+        top: viewMode === 'radar' ? '86%' : (isVertical ? '80%' : '75%'), 
+        icon: 'circle', 
+        itemWidth: (viewMode === 'radar' || isVertical) ? 6 : 10,
+        itemHeight: (viewMode === 'radar' || isVertical) ? 6 : 10,
+        itemGap: (viewMode === 'radar' || isVertical) ? 8 : 10,
+        textStyle: { fontSize: (viewMode === 'radar' || isVertical) ? 10 : 12, fontFamily: '"Outfit","Inter",sans-serif', color: '#555' } 
+      },
       radar: {
-        center:['50%','46%'], radius:'60%',
+        center: viewMode === 'radar' ? ['50%', '48%'] : (isVertical ? ['50%', '42%'] : ['50%','46%']), 
+        radius: viewMode === 'radar' ? '52%' : (isVertical ? '45%' : '60%'),
         indicator: indicatorNames.map(n => ({ name: i18n[n] || n, max: featureMaxes?.[n] ? featureMaxes[n]*1.05 : 1 })),
         splitNumber: 4,
-        axisName:  { color:'#555555', fontWeight:'bold', fontSize:12, borderRadius:3, padding:[3,6], backgroundColor:'rgba(255,255,255,0.85)' },
+        axisName:  { color:'#555555', fontWeight:'bold', fontSize: (viewMode === 'radar' || isVertical) ? 9 : 11, borderRadius:3, padding:[2,4], backgroundColor:'rgba(255,255,255,0.85)' },
         splitArea: { areaStyle:{ color:['rgba(250,250,250,0.3)','rgba(240,240,240,0.5)','rgba(230,230,230,0.8)','rgba(168,216,185,0.2)'] } },
         axisLine:  { lineStyle:{ color:'#DDDDDD' } },
         splitLine: { lineStyle:{ color:'#DDDDDD' } }
       },
       series: [{
         name:'流派声学特征', type:'radar',
+        symbol: 'circle',
+        symbolSize: (viewMode === 'radar' || isVertical) ? 4 : 6,
         data: radarSeriesData
       }]
     };
@@ -552,12 +583,13 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
       className="chart-container" 
       style={{ 
         display:'flex', 
-        height:'800px', 
+        flexDirection: (viewMode === 'both' && isVertical) ? 'column' : 'row',
+        height: viewMode === 'both' ? (isVertical ? '100%' : '800px') : '100%', 
         width:'100%', 
         position: 'relative', 
         overflow: 'hidden',
-        borderRadius: '16px',
-        background: '#FFFFFF',
+        borderRadius: viewMode === 'both' ? '16px' : '0px',
+        background: viewMode === 'both' ? '#FFFFFF' : 'transparent',
         transition: 'all 0.5s ease-in-out'
       }}
     >
@@ -588,151 +620,162 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
         }
       `}</style>
 
-      {/* 1. 底层专辑封面大背景（零模糊高清呈现） */}
-      <div 
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundImage: coverUrl ? `url(${coverUrl})` : 'none',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          opacity: coverUrl ? 0.38 : 0, // 显著调高不透明度，细节一览无余
-          transition: 'background-image 0.6s ease-in-out, opacity 0.6s ease-in-out',
-          zIndex: 0,
-          pointerEvents: 'none'
-        }}
-      />
-
-      {/* 2. 极薄亮色调和层（去掉任何朦胧模糊，完美还原细节并保障对比度） */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.42) 100%)',
-          opacity: coverUrl ? 1 : 0,
-          transition: 'opacity 0.6s ease-in-out',
-          zIndex: 0,
-          pointerEvents: 'none'
-        }}
-      />
+      {/* 1. 底层专辑封面大背景（零模糊高清呈现） - 暂时隐藏 */}
+      {false && viewMode !== 'sunburst' && (
+        <div 
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundImage: coverUrl ? `url(${coverUrl})` : 'none',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: coverUrl ? 0.38 : 0, // 显著调高不透明度，细节一览无余
+            transition: 'background-image 0.6s ease-in-out, opacity 0.6s ease-in-out',
+            zIndex: 0,
+            pointerEvents: 'none'
+          }}
+        />
+      )}
+ 
+      {/* 2. 极薄亮色调和层（暂时隐藏） */}
+      {false && viewMode !== 'sunburst' && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.42) 100%)',
+            opacity: coverUrl ? 1 : 0,
+            transition: 'opacity 0.6s ease-in-out',
+            zIndex: 0,
+            pointerEvents: 'none'
+          }}
+        />
+      )}
 
       {/* 主体图表区域，置于背景层之上，内部包含两个浮动的羊脂白玉卡片保护图表可读性 */}
       <div 
         style={{ 
           display: 'flex', 
+          flexDirection: (viewMode === 'both' && isVertical) ? 'column' : 'row',
           height: '100%', 
           width: '100%', 
           zIndex: 1, 
           position: 'relative',
-          padding: '30px 10px',
+          padding: viewMode !== 'both' ? '0px' : (isVertical ? '10px 10px' : '30px 10px'),
           boxSizing: 'border-box'
         }}
       >
         {/* Left Card: Sunburst + Chord Ribbons */}
-        <div 
-          style={{ 
-            flex:'0 0 60%', 
-            height:'100%', 
-            padding: '0 20px 0 30px', 
-            boxSizing: 'border-box',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <div
-            style={{
-              height: '92%', // 精致缩减高度
-              width: '100%',
-              background: coverUrl ? 'rgba(255, 255, 255, 0.88)' : '#FFFFFF',
-              backdropFilter: coverUrl ? 'blur(16px)' : 'none',
-              WebkitBackdropFilter: coverUrl ? 'blur(16px)' : 'none',
-              borderRadius: '24px',
-              border: coverUrl ? '1px solid rgba(255, 255, 255, 0.7)' : '1px solid rgba(0,0,0,0.03)',
-              boxShadow: coverUrl ? '0 12px 36px rgba(0, 0, 0, 0.05)' : 'none',
-              transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+        {(viewMode === 'both' || viewMode === 'sunburst') && (
+          <div 
+            style={{ 
+              flex: viewMode === 'sunburst' ? '1 1 100%' : (isVertical ? '0 0 50%' : '0 0 60%'), 
+              height: viewMode === 'sunburst' ? '100%' : (isVertical ? '50%' : '100%'), 
+              padding: viewMode === 'sunburst' ? '0px' : (isVertical ? '10px 20px' : '0 20px 0 30px'), 
+              boxSizing: 'border-box',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxSizing: 'border-box'
+              minHeight: 0
             }}
           >
-            <ReactECharts
-              ref={echartsRef}
-              key="chord-sunburst"
-              option={chordOptions}
-              style={{ height:'100%', width:'100%' }}
-              onEvents={chordEvents}
-            />
+            <div
+              style={{
+                height: '100%', 
+                width: '100%',
+                background: viewMode === 'sunburst' ? 'transparent' : (coverUrl ? 'rgba(255, 255, 255, 0.88)' : '#FFFFFF'),
+                backdropFilter: viewMode === 'sunburst' ? 'none' : (coverUrl ? 'blur(16px)' : 'none'),
+                WebkitBackdropFilter: viewMode === 'sunburst' ? 'none' : (coverUrl ? 'blur(16px)' : 'none'),
+                borderRadius: viewMode === 'sunburst' ? '0px' : '24px',
+                border: viewMode === 'sunburst' ? 'none' : (coverUrl ? '1px solid rgba(255, 255, 255, 0.7)' : '1px solid rgba(0,0,0,0.03)'),
+                boxShadow: viewMode === 'sunburst' ? 'none' : (coverUrl ? '0 12px 36px rgba(0, 0, 0, 0.05)' : 'none'),
+                transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxSizing: 'border-box'
+              }}
+            >
+              <ReactECharts
+                ref={echartsRef}
+                key="chord-sunburst"
+                option={chordOptions}
+                style={{ height:'100%', width:'100%' }}
+                onEvents={chordEvents}
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Right Card: Radar */}
-        <div 
-          style={{ 
-            flex:'0 0 40%', 
-            height:'100%', 
-            padding: '0 30px 0 20px', 
-            boxSizing: 'border-box',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <div
-            style={{
-              height: '92%', // 精致缩减高度，更有微型仪表感
-              width: '90%',  // 宽度缩减 10%，让出更多背景空间
-              background: coverUrl ? 'rgba(255, 255, 255, 0.88)' : '#FFFFFF',
-              backdropFilter: coverUrl ? 'blur(16px)' : 'none',
-              WebkitBackdropFilter: coverUrl ? 'blur(16px)' : 'none',
-              borderRadius: '24px',
-              border: coverUrl ? '1px solid rgba(255, 255, 255, 0.7)' : '1px solid rgba(0,0,0,0.03)',
-              boxShadow: coverUrl ? '0 12px 36px rgba(0, 0, 0, 0.05)' : 'none',
-              transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+        {(viewMode === 'both' || viewMode === 'radar') && (
+          <div 
+            style={{ 
+              flex: viewMode === 'radar' ? '1 1 100%' : (isVertical ? '0 0 50%' : '0 0 40%'), 
+              height: viewMode === 'radar' ? '100%' : (isVertical ? '50%' : '100%'), 
+              padding: viewMode === 'radar' ? '0px' : (isVertical ? '10px 20px' : '0 30px 0 20px'), 
+              boxSizing: 'border-box',
               display: 'flex',
-              flexDirection: 'column',
+              alignItems: 'center',
               justifyContent: 'center',
-              padding: '16px',
-              boxSizing: 'border-box'
+              minHeight: 0
             }}
           >
-            {radarFeatures ? (
-              <ReactECharts option={radarOptions} style={{ height:'100%', width:'100%' }} />
-            ) : (
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#AAAAAA', fontSize:'14px', flexDirection:'column', gap:'12px' }}>
-                <div style={{ fontSize:'48px', opacity:0.3 }}>🎵</div>
-                <span>悬停旭日图节点，查看流派特征七维 analysis</span>
-              </div>
-            )}
+            <div
+              style={{
+                height: '100%', 
+                width: '100%', 
+                background: viewMode === 'radar' ? 'transparent' : (coverUrl ? 'rgba(255, 255, 255, 0.88)' : '#FFFFFF'),
+                backdropFilter: viewMode === 'radar' ? 'none' : (coverUrl ? 'blur(16px)' : 'none'),
+                WebkitBackdropFilter: viewMode === 'radar' ? 'none' : (coverUrl ? 'blur(16px)' : 'none'),
+                borderRadius: viewMode === 'radar' ? '0px' : '24px',
+                border: viewMode === 'radar' ? 'none' : (coverUrl ? '1px solid rgba(255, 255, 255, 0.7)' : '1px solid rgba(0,0,0,0.03)'),
+                boxShadow: viewMode === 'radar' ? 'none' : (coverUrl ? '0 12px 36px rgba(0, 0, 0, 0.05)' : 'none'),
+                transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                padding: viewMode === 'radar' ? '0px' : (isVertical ? '8px 16px' : '16px'),
+                boxSizing: 'border-box'
+              }}
+            >
+              {radarFeatures ? (
+                <ReactECharts option={radarOptions} style={{ height:'100%', width:'100%' }} />
+              ) : (
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#AAAAAA', fontSize:'14px', flexDirection:'column', gap:'12px' }}>
+                  <div style={{ fontSize:'48px', opacity:0.3 }}>🎵</div>
+                  <span>悬停旭日图节点，查看流派特征七维 analysis</span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* 优雅磨砂玻璃悬浮代表歌曲名片 */}
-      {repSong && coverUrl && (
+      {/* 优雅磨砂玻璃悬浮代表歌曲名片 - 大盘模式 */}
+      {viewMode === 'both' && repSong && coverUrl && (
         <div 
           style={{
             position: 'absolute',
-            bottom: '24px',
-            right: '24px', // 完美移至右下角，处于雷达图正下方
+            bottom: isVertical ? '8px' : '24px',
+            right: isVertical ? '8px' : '24px', 
             display: 'flex',
             alignItems: 'center',
-            gap: '16px',
-            padding: '12px 18px',
+            gap: isVertical ? '8px' : '16px',
+            padding: isVertical ? '6px 12px' : '12px 18px',
             background: 'rgba(255, 255, 255, 0.55)',
             backdropFilter: 'blur(20px) saturate(120%)',
             WebkitBackdropFilter: 'blur(20px) saturate(120%)',
             border: '1px solid rgba(255, 255, 255, 0.45)',
-            borderRadius: '16px',
+            borderRadius: isVertical ? '12px' : '16px',
             boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.08)',
-            maxWidth: '320px',
+            maxWidth: isVertical ? '220px' : '320px',
             transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
             opacity: coverUrl ? 1 : 0,
             transform: coverUrl ? 'translateY(0) scale(1)' : 'translateY(15px) scale(0.95)',
@@ -741,7 +784,7 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
           }}
         >
           {/* 旋转黑胶唱片外观 */}
-          <div style={{ position: 'relative', width: '56px', height: '56px', flexShrink: 0 }}>
+          <div style={{ position: 'relative', width: isVertical ? '36px' : '56px', height: isVertical ? '36px' : '56px', flexShrink: 0 }}>
             <img 
               src={coverUrl} 
               alt="Album Cover" 
@@ -825,6 +868,108 @@ const ToggleableChordRadar = ({ sunburstData, graphData, radarFeatures, radarNam
               </div>
               <span style={{ fontSize: '9px', color: '#777777', fontWeight: '600' }}>Pop: {Math.round(repSong.popularity)}%</span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 优雅磨砂玻璃悬浮代表歌曲名片 - 极微小药丸模式（只在雷达图卡片右上角显示，绝对不挡字） */}
+      {viewMode === 'radar' && repSong && coverUrl && (
+        <div 
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: '12px', 
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '3px 8px',
+            borderRadius: '12px',
+            border: '1px solid rgba(255, 255, 255, 0.65)',
+            boxShadow: '0 4px 12px 0 rgba(0, 0, 0, 0.05)',
+            maxWidth: '150px',
+            transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+            opacity: coverUrl ? 1 : 0,
+            transform: coverUrl ? 'translateY(0) scale(1)' : 'translateY(-10px) scale(0.95)',
+            zIndex: 10,
+            pointerEvents: 'none', // 确保绝不遮挡下层雷达图及驾驶舱任何组件的Hover/Click事件
+            overflow: 'hidden' // 确保背景底图完美截断在圆角内
+          }}
+        >
+          {/* Layer 0: 专辑封面底图磨砂质感背景层 */}
+          <div 
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundImage: coverUrl ? `url(${coverUrl})` : 'none',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              filter: 'blur(10px) saturate(110%)',
+              opacity: 0.15,
+              zIndex: 0
+            }}
+          />
+          
+          {/* Layer 1: Frosted Glass 微白半透明融合调和层 */}
+          <div 
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(255, 255, 255, 0.65)',
+              backdropFilter: 'blur(5px)',
+              WebkitBackdropFilter: 'blur(5px)',
+              zIndex: 1
+            }}
+          />
+
+          {/* Layer 2: 前景内容层 (必须配置 position: relative 和 zIndex: 2 以完美浮现于背景层之上) */}
+          {/* 旋转小唱片 */}
+          <div style={{ position: 'relative', width: '16px', height: '16px', flexShrink: 0, zIndex: 2 }}>
+            <img 
+              src={coverUrl} 
+              alt="Album Cover" 
+              style={{
+                width: '100%',
+                height: '100%',
+                borderRadius: '50%',
+                objectFit: 'cover',
+                border: '1px solid rgba(255, 255, 255, 0.8)',
+                animation: 'spin 12s linear infinite'
+              }}
+            />
+            <div 
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '4px',
+                height: '4px',
+                borderRadius: '50%',
+                background: '#FFFFFF'
+              }}
+            />
+          </div>
+          {/* 迷你代表歌曲名 */}
+          <div 
+            style={{ 
+              position: 'relative',
+              zIndex: 2,
+              fontSize: '8.5px', 
+              fontWeight: '700', 
+              color: '#333333', 
+              whiteSpace: 'nowrap', 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis',
+              fontFamily: '"Outfit", "Inter", sans-serif'
+            }}
+          >
+            🎵 {repSong.title}
           </div>
         </div>
       )}

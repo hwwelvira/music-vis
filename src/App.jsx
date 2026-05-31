@@ -7,12 +7,14 @@ import TimelineEvolutionCombined from './components/TimelineEvolutionCombined';
 import AcousticClusterAssociation from './components/AcousticClusterAssociation';
 import InteractiveKMeansExplorer from './components/InteractiveKMeansExplorer';
 import GenreClusterRelation from './components/GenreClusterRelation';
+import CockpitView from './components/CockpitView';
 
 function App() {
   const [data, setData] = useState(null);
   const [selectedGenre, setSelectedGenre] = useState(null);
   const [brushedData, setBrushedData] = useState([]);
   const [selectedSong, setSelectedSong] = useState(null);
+  const [viewMode, setViewMode] = useState('main'); // 'main' or 'cockpit'
 
   useEffect(() => {
     fetch('/data.json')
@@ -91,78 +93,141 @@ function App() {
   }
 
   return (
-    <div className="dashboard-container">
-      <div className="dashboard-header">
-        <h1>Music Dimension Visualizer</h1>
-        <p>探索数十万首流行音乐的特征演变与流派聚类</p>
-      </div>
-
-
-      <div className="card" style={{ marginBottom: '24px' }}>
-        <h2 className="card-title">流派结构与特征分析 - {radarName}</h2>
-        <ToggleableChordRadar 
-          sunburstData={data.sunburst}
-          graphData={data.graph}
-          radarFeatures={radarData}
-          radarName={radarName}
-          indicatorNames={data.radar_features}
-          featureMaxes={data.featureMaxes}
-          scatterData={data.scatter}
-          onNodeClick={(node) => setSelectedGenre(node)} 
-          onNodeHover={(node) => setSelectedGenre(node)}
-        />
-      </div>
-
-      <div className="grid-middle">
-        <div className="card">
-          <h2 className="card-title">歌曲聚类与框选过滤 (Energy vs Valence)</h2>
-          <ScatterBrushChart 
-            data={data.scatter} 
-            selectedSong={selectedSong}
-            onBrush={(selectedIndices) => {
-              const selected = selectedIndices.map(i => data.scatter[i]);
-              setBrushedData(selected);
-              setSelectedSong(null); // Clear selected song on brush
-            }} 
-          />
+    <div className="dashboard-container" style={{ paddingBottom: viewMode === 'cockpit' ? '10px' : '40px' }}>
+      <div className="dashboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '20px' }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Music Dimension Visualizer</h1>
+          <p style={{ margin: '4px 0 0 0' }}>探索数十万首流行音乐的特征演变与流派聚类</p>
         </div>
-        <div className="card" style={{overflow: 'hidden'}}>
-          <h2 className="card-title">筛选歌曲列表 ({brushedData.length > 0 ? brushedData.length : data.scatter.length})</h2>
-          <SongTable 
-            songs={brushedData.length > 0 ? brushedData : data.scatter} 
-            selectedSong={selectedSong}
-            onSongClick={(song) => setSelectedSong(song)}
-          />
+        {/* 极简高透双视图药丸切换胶囊 */}
+        <div 
+          style={{
+            display: 'flex',
+            background: 'rgba(145, 158, 171, 0.08)',
+            padding: '3px',
+            borderRadius: '20px',
+            border: '1px solid rgba(145, 158, 171, 0.05)'
+          }}
+        >
+          <button
+            onClick={() => setViewMode('main')}
+            style={{
+              padding: '8px 18px',
+              borderRadius: '16px',
+              fontSize: '12px',
+              fontWeight: '800',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: viewMode === 'main' ? '#FFFFFF' : 'transparent',
+              color: viewMode === 'main' ? '#1E293B' : '#64748B',
+              boxShadow: viewMode === 'main' ? '0 2px 8px 0 rgba(145, 158, 171, 0.12)' : 'none'
+            }}
+          >
+            🌍 时空演变多维大盘
+          </button>
+          <button
+            onClick={() => setViewMode('cockpit')}
+            style={{
+              padding: '8px 18px',
+              borderRadius: '16px',
+              fontSize: '12px',
+              fontWeight: '800',
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              background: viewMode === 'cockpit' ? '#FFFFFF' : 'transparent',
+              color: viewMode === 'cockpit' ? '#1E293B' : '#64748B',
+              boxShadow: viewMode === 'cockpit' ? '0 2px 8px 0 rgba(145, 158, 171, 0.12)' : 'none'
+            }}
+          >
+            🖥️ 极客一屏集成驾驶舱 (实验)
+          </button>
         </div>
       </div>
-      <div style={{ marginTop: '24px', marginBottom: '24px' }}>
-        <AcousticClusterAssociation 
-          scatterData={data.scatter} 
-          sunburstData={data.sunburst} 
-          brushedSongs={brushedData}
-        />
-      </div>
 
-      <div style={{ marginTop: '24px', marginBottom: '24px' }}>
-        <GenreClusterRelation 
-          scatterData={data.scatter}
-        />
-      </div>
 
-      <div style={{ marginTop: '24px', marginBottom: '24px' }}>
-        <InteractiveKMeansExplorer 
-          scatterData={data.scatter} 
-          sunburstData={data.sunburst}
+      {viewMode === 'cockpit' ? (
+        /* 🌌 视图二：一屏不溢出极客控制驾驶舱 */
+        <CockpitView 
+          data={data}
+          selectedGenre={selectedGenre}
+          setSelectedGenre={setSelectedGenre}
+          brushedData={brushedData}
+          setBrushedData={setBrushedData}
+          selectedSong={selectedSong}
+          setSelectedSong={setSelectedSong}
         />
-      </div>
+      ) : (
+        /* 🌍 视图一：全局时空演变多维大盘 (原先的滚动长看板流，完全保留不影响) */
+        <>
+          <div className="card" style={{ marginBottom: '24px' }}>
+            <h2 className="card-title">流派结构与特征分析 - {radarName}</h2>
+            <ToggleableChordRadar 
+              sunburstData={data.sunburst}
+              graphData={data.graph}
+              radarFeatures={radarData}
+              radarName={radarName}
+              indicatorNames={data.radar_features}
+              featureMaxes={data.featureMaxes}
+              scatterData={data.scatter}
+              onNodeClick={(node) => setSelectedGenre(node)} 
+              onNodeHover={(node) => setSelectedGenre(node)}
+            />
+          </div>
 
-      <div style={{ marginTop: '24px', marginBottom: '24px' }}>
-        <TimelineEvolutionCombined 
-          timelineData={data.timeline} 
-          wordsData={data.timeline_words} 
-          scatterData={data.scatter} 
-        />
-      </div>
+          <div className="grid-middle">
+            <div className="card">
+              <h2 className="card-title">歌曲聚类与框选过滤 (Energy vs Valence)</h2>
+              <ScatterBrushChart 
+                data={data.scatter} 
+                selectedSong={selectedSong}
+                onBrush={(selectedIndices) => {
+                  const selected = selectedIndices.map(i => data.scatter[i]);
+                  setBrushedData(selected);
+                  setSelectedSong(null); // Clear selected song on brush
+                }} 
+              />
+            </div>
+            <div className="card" style={{overflow: 'hidden'}}>
+              <h2 className="card-title">筛选歌曲列表 ({brushedData.length > 0 ? brushedData.length : data.scatter.length})</h2>
+              <SongTable 
+                songs={brushedData.length > 0 ? brushedData : data.scatter} 
+                selectedSong={selectedSong}
+                onSongClick={(song) => setSelectedSong(song)}
+              />
+            </div>
+          </div>
+          <div style={{ marginTop: '24px', marginBottom: '24px' }}>
+            <AcousticClusterAssociation 
+              scatterData={data.scatter} 
+              sunburstData={data.sunburst} 
+              brushedSongs={brushedData}
+            />
+          </div>
+
+          <div style={{ marginTop: '24px', marginBottom: '24px' }}>
+            <GenreClusterRelation 
+              scatterData={data.scatter}
+            />
+          </div>
+
+          <div style={{ marginTop: '24px', marginBottom: '24px' }}>
+            <InteractiveKMeansExplorer 
+              scatterData={data.scatter} 
+              sunburstData={data.sunburst}
+            />
+          </div>
+
+          <div style={{ marginTop: '24px', marginBottom: '24px' }}>
+            <TimelineEvolutionCombined 
+              timelineData={data.timeline} 
+              wordsData={data.timeline_words} 
+              scatterData={data.scatter} 
+            />
+          </div>
+        </>
+      )}
 
     </div>
   );
